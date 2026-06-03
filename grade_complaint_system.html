@@ -412,15 +412,19 @@
                         body: JSON.stringify(formData)
                     });
                     const data = await res.json();
-                    if (!res.ok && !data.success) throw new Error(data.error || 'ข้อมูลไม่ถูกต้อง');
+                    
+                    // แก้ไขตรงนี้ให้ดัก Error ได้แม่นยำขึ้น
+                    if (!res.ok || !data.success) {
+                        throw new Error(data?.error || 'เซิร์ฟเวอร์ขัดข้อง หรือยังไม่ได้ตั้งค่า Google Sheet');
+                    }
                     
                     if (window.liff && window.liff.isInClient()) {
                         liff.sendMessages([{
                             type: 'text',
-                            text: `ส่งคำร้องสำเร็จ!\nเลขที่: ${data.data.complaint_id}\nสถานะ: รอดำเนินการ\n(ระบบจะแจ้งเตือนความคืบหน้าผ่านแชทนี้)`
+                            text: `ส่งคำร้องสำเร็จ!\nเลขที่: ${data?.data?.complaint_id || '-'}\nสถานะ: รอดำเนินการ\n(ระบบจะแจ้งเตือนความคืบหน้าผ่านแชทนี้)`
                         }]).then(() => { liff.closeWindow(); });
                     } else {
-                        showAlert('success', `ส่งคำร้องสำเร็จ! เลขที่อ้างอิง: ${data.data.complaint_id}`);
+                        showAlert('success', `ส่งคำร้องสำเร็จ! เลขที่อ้างอิง: ${data?.data?.complaint_id || '-'}`);
                     }
                 } else {
                     // Mock Data
@@ -460,10 +464,16 @@
                         fetch(`${API_BASE_URL}?path=stats`),
                         fetch(`${API_BASE_URL}?path=complaints`)
                     ]);
+                    
                     if (!statsRes.ok || !compRes.ok) throw new Error('ไม่สามารถเชื่อมต่อ Backend ได้');
                     
                     const statsData = await statsRes.json();
                     const compData = await compRes.json();
+                    
+                    // ดักจับ Error หากฝั่ง GAS ตอบกลับมาว่าไม่ Success
+                    if (!statsData.success || !compData.success) {
+                        throw new Error(compData?.error || statsData?.error || 'เกิดข้อผิดพลาดในการดึงข้อมูลจาก Google Sheet');
+                    }
                     
                     renderStats(statsData.data);
                     renderTable(compData.data);
@@ -472,7 +482,7 @@
                     renderTable(mockComplaints);
                 }
             } catch (err) {
-                adminAlertError.textContent = 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ กรุณาตรวจสอบลิงก์ Google Apps Script ให้ถูกต้อง';
+                adminAlertError.textContent = err.message || 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ กรุณาตรวจสอบลิงก์ Google Apps Script ให้ถูกต้อง';
                 adminAlertError.classList.remove('hidden');
                 
                 if(useRealAPI) {
@@ -486,7 +496,7 @@
         async function handleStatusChange(id, complaint_id, newStatus) {
             try {
                 if (useRealAPI) {
-                    await fetch(API_BASE_URL, {
+                    const res = await fetch(API_BASE_URL, {
                         method: 'POST',
                         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                         body: JSON.stringify({ 
@@ -495,13 +505,18 @@
                             status: newStatus 
                         })
                     });
+                    
+                    const data = await res.json();
+                    if (!res.ok || !data.success) {
+                        throw new Error(data?.error || 'เกิดข้อผิดพลาดในการอัปเดตสถานะ');
+                    }
                 } else {
                     const index = mockComplaints.findIndex(c => c.id === id);
                     if (index !== -1) mockComplaints[index].status = newStatus;
                 }
                 fetchDashboardData();
             } catch (err) {
-                alert('เกิดข้อผิดพลาดในการเปลี่ยนสถานะ');
+                alert(err.message || 'เกิดข้อผิดพลาดในการเปลี่ยนสถานะ');
             }
         }
 
@@ -510,7 +525,7 @@
             const tbody = document.getElementById('tableBody');
             tbody.innerHTML = '';
 
-            if (data.length === 0) {
+            if (!data || data.length === 0) {
                 tbody.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-gray-500">ไม่มีข้อมูลข้อร้องเรียน</td></tr>`;
                 return;
             }
@@ -523,16 +538,16 @@
                 const badgeHtml = getStatusBadgeHtml(item.status);
 
                 tr.innerHTML = `
-                    <td class="p-4 text-sm font-medium text-indigo-600 whitespace-nowrap">${item.complaint_id}</td>
+                    <td class="p-4 text-sm font-medium text-indigo-600 whitespace-nowrap">${item.complaint_id || '-'}</td>
                     <td class="p-4 text-sm text-gray-800 whitespace-nowrap">
-                        ${item.student_id}
-                        <div class="text-xs text-gray-500">${item.year_level}</div>
+                        ${item.student_id || '-'}
+                        <div class="text-xs text-gray-500">${item.year_level || ''}</div>
                     </td>
                     <td class="p-4 text-sm">
                         <p class="font-medium text-gray-800">${escapeHtml(item.subject)}</p>
                         <p class="text-xs text-gray-500 line-clamp-1 mt-0.5">${escapeHtml(item.type)}: ${escapeHtml(item.detail)}</p>
                     </td>
-                    <td class="p-4 text-sm text-gray-600 whitespace-nowrap">${dateStr}</td>
+                    <td class="p-4 text-sm text-gray-600 whitespace-nowrap">${dateStr !== 'Invalid Date' ? dateStr : item.created_at}</td>
                     <td class="p-4 whitespace-nowrap">${badgeHtml}</td>
                     <td class="p-4 text-right whitespace-nowrap">
                         <select onchange="handleStatusChange(${item.id || `'${item.complaint_id}'`}, '${item.complaint_id}', this.value)"
@@ -549,6 +564,7 @@
         }
 
         function updateStats(dataList) {
+            if (!dataList) return;
             const counts = dataList.reduce((acc, curr) => {
                 acc[curr.status] = (acc[curr.status] || 0) + 1;
                 acc.total += 1;
