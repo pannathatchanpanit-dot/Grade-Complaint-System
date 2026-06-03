@@ -245,8 +245,11 @@
     <!-- JavaScript Logic -->
     <script>
         // --- Configuration ---
-        const API_BASE_URL = 'http://localhost:3001/api';
-        const LIFF_ID = 'YOUR_LIFF_ID_HERE'; // 🔴 เปลี่ยนเป็น LIFF ID ของคุณ
+        // 🔴 Google Apps Script Web App URL ของคุณ
+        const API_BASE_URL = 'https://script.google.com/macros/s/AKfycbyUwYNDX4p8ARypgJAqpf5oaeH3xbcn8Djhfos2qIWO7-6n5qEHi84zuCOE7zA_qYg68g/exec';
+        
+        // 🔴 เปลี่ยนเป็น LIFF ID ของคุณ (ถ้ามี)
+        const LIFF_ID = 'YOUR_LIFF_ID_HERE'; 
         
         // --- State Variables ---
         let activeTab = 'student';
@@ -304,11 +307,10 @@
         function switchTab(tabName) {
             // ตรวจสอบรหัสผ่านก่อนเข้าหน้า Admin
             if (tabName === 'admin' && !isAdminAuth) {
-                // แสดง Modal แทนการใช้ prompt()
+                // แสดง Modal
                 document.getElementById('passwordModal').classList.remove('hidden');
-                // โฟกัสที่ช่องกรอกอัตโนมัติ
                 setTimeout(() => document.getElementById('adminPasswordInput').focus(), 100);
-                return; // หยุดการทำงานไว้ก่อน รอจนกว่าจะกรอกรหัสผ่านถูก
+                return; 
             }
 
             activeTab = tabName;
@@ -369,10 +371,10 @@
 
         function verifyPassword() {
             const pwd = document.getElementById('adminPasswordInput').value;
-            if (pwd === '12345') { // รหัสผ่านคือ 12345
+            if (pwd === '12345') { // รหัสผ่าน
                 isAdminAuth = true;
                 closePasswordModal();
-                switchTab('admin'); // ดำเนินการเปลี่ยนหน้า
+                switchTab('admin');
             } else {
                 document.getElementById('passwordError').classList.remove('hidden');
             }
@@ -403,13 +405,14 @@
 
             try {
                 if (useRealAPI) {
-                    const res = await fetch(`${API_BASE_URL}/complaints`, {
+                    const res = await fetch(API_BASE_URL, {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        // ใช้ text/plain ป้องกันปัญหา CORS ใน GAS
+                        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                         body: JSON.stringify(formData)
                     });
                     const data = await res.json();
-                    if (!res.ok) throw new Error(data.error || 'ข้อมูลไม่ถูกต้อง');
+                    if (!res.ok && !data.success) throw new Error(data.error || 'ข้อมูลไม่ถูกต้อง');
                     
                     if (window.liff && window.liff.isInClient()) {
                         liff.sendMessages([{
@@ -454,8 +457,8 @@
             try {
                 if (useRealAPI) {
                     const [statsRes, compRes] = await Promise.all([
-                        fetch(`${API_BASE_URL}/stats`),
-                        fetch(`${API_BASE_URL}/complaints?limit=50`)
+                        fetch(`${API_BASE_URL}?path=stats`),
+                        fetch(`${API_BASE_URL}?path=complaints`)
                     ]);
                     if (!statsRes.ok || !compRes.ok) throw new Error('ไม่สามารถเชื่อมต่อ Backend ได้');
                     
@@ -469,10 +472,9 @@
                     renderTable(mockComplaints);
                 }
             } catch (err) {
-                adminAlertError.textContent = 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ กรุณาตรวจสอบว่ารัน backend ที่พอร์ต 3001 แล้วหรือไม่';
+                adminAlertError.textContent = 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ กรุณาตรวจสอบลิงก์ Google Apps Script ให้ถูกต้อง';
                 adminAlertError.classList.remove('hidden');
                 
-                // Toggle back to mock if real API fails
                 if(useRealAPI) {
                     toggleApiMode(); 
                 }
@@ -484,10 +486,14 @@
         async function handleStatusChange(id, complaint_id, newStatus) {
             try {
                 if (useRealAPI) {
-                    await fetch(`${API_BASE_URL}/complaints/${complaint_id}/status`, {
-                        method: 'PATCH',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ status: newStatus })
+                    await fetch(API_BASE_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                        body: JSON.stringify({ 
+                            action: 'update_status',
+                            complaint_id: complaint_id, 
+                            status: newStatus 
+                        })
                     });
                 } else {
                     const index = mockComplaints.findIndex(c => c.id === id);
@@ -529,7 +535,7 @@
                     <td class="p-4 text-sm text-gray-600 whitespace-nowrap">${dateStr}</td>
                     <td class="p-4 whitespace-nowrap">${badgeHtml}</td>
                     <td class="p-4 text-right whitespace-nowrap">
-                        <select onchange="handleStatusChange(${item.id}, '${item.complaint_id}', this.value)"
+                        <select onchange="handleStatusChange(${item.id || `'${item.complaint_id}'`}, '${item.complaint_id}', this.value)"
                             class="text-sm border border-gray-300 rounded-md shadow-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white py-1.5 px-2 outline-none cursor-pointer">
                             <option value="pending" ${item.status === 'pending' ? 'selected' : ''}>รอดำเนินการ</option>
                             <option value="processing" ${item.status === 'processing' ? 'selected' : ''}>กำลังดำเนินการ</option>
