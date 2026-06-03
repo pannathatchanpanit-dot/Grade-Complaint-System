@@ -413,9 +413,8 @@
                     });
                     const data = await res.json();
                     
-                    // แก้ไขตรงนี้ให้ดัก Error ได้แม่นยำขึ้น
                     if (!res.ok || !data.success) {
-                        throw new Error(data?.error || 'เซิร์ฟเวอร์ขัดข้อง หรือยังไม่ได้ตั้งค่า Google Sheet');
+                        throw new Error(formatApiError(data?.error));
                     }
                     
                     if (window.liff && window.liff.isInClient()) {
@@ -472,7 +471,7 @@
                     
                     // ดักจับ Error หากฝั่ง GAS ตอบกลับมาว่าไม่ Success
                     if (!statsData.success || !compData.success) {
-                        throw new Error(compData?.error || statsData?.error || 'เกิดข้อผิดพลาดในการดึงข้อมูลจาก Google Sheet');
+                        throw new Error(formatApiError(compData?.error || statsData?.error));
                     }
                     
                     renderStats(statsData.data);
@@ -508,7 +507,7 @@
                     
                     const data = await res.json();
                     if (!res.ok || !data.success) {
-                        throw new Error(data?.error || 'เกิดข้อผิดพลาดในการอัปเดตสถานะ');
+                        throw new Error(formatApiError(data?.error));
                     }
                 } else {
                     const index = mockComplaints.findIndex(c => c.id === id);
@@ -593,6 +592,16 @@
         }
 
         // --- Utils ---
+        function formatApiError(errMsg) {
+            if (!errMsg) return 'เซิร์ฟเวอร์ขัดข้อง หรือยังไม่ได้ตั้งค่า Google Sheet';
+            
+            // ดักจับ Error หาก Google Script หาชื่อ Sheet ไม่เจอ (มักจะเป็นเพราไม่ได้รัน Initial Setup)
+            if (errMsg.includes('getLastRow') || errMsg.includes('getDataRange')) {
+                return 'ไม่พบแผ่นงาน (Sheet) ชื่อ "Complaints" ❌ กรุณากลับไปที่ Google Apps Script แล้วเลือกฟังก์ชัน initialSetup() จากนั้นกด "เรียกใช้" ก่อนครับ';
+            }
+            return errMsg;
+        }
+
         function setLoading(isLoading) {
             const btnIcon = document.getElementById('btnSubmitIcon');
             const btnText = document.getElementById('btnSubmitText');
